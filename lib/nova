@@ -353,14 +353,12 @@ function configure_nova {
 # SERVICE_TENANT_NAME  nova         ResellerAdmin (if Swift is enabled)
 function create_nova_accounts {
 
-    local service_tenant=$(openstack project list | awk "/ $SERVICE_TENANT_NAME / { print \$2 }")
-    local admin_role=$(openstack role list | awk "/ admin / { print \$2 }")
-
     # Nova
     if [[ "$ENABLED_SERVICES" =~ "n-api" ]]; then
 
-        local nova_user=$(get_or_create_user "nova" "$SERVICE_PASSWORD")
-        get_or_add_user_role $admin_role $nova_user $service_tenant
+        # NOTE(jamielennox): Nova doesn't need the admin role here, however neutron uses
+        # this service user when notifying nova of changes and that requires the admin role.
+        create_service_user "nova" "admin"
 
         if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
 
@@ -387,7 +385,7 @@ function create_nova_accounts {
         if is_service_enabled swift; then
             # Nova needs ResellerAdmin role to download images when accessing
             # swift through the s3 api.
-            get_or_add_user_role ResellerAdmin nova $SERVICE_TENANT_NAME
+            get_or_add_user_project_role ResellerAdmin nova $SERVICE_TENANT_NAME
         fi
 
         # EC2
@@ -397,9 +395,9 @@ function create_nova_accounts {
                 "ec2" "EC2 Compatibility Layer")
             get_or_create_endpoint $ec2_service \
                 "$REGION_NAME" \
-                "$EC2_SERVICE_PROTOCOL://$SERVICE_HOST:8773/services/Cloud" \
-                "$EC2_SERVICE_PROTOCOL://$SERVICE_HOST:8773/services/Admin" \
-                "$EC2_SERVICE_PROTOCOL://$SERVICE_HOST:8773/services/Cloud"
+                "$EC2_SERVICE_PROTOCOL://$SERVICE_HOST:8773/" \
+                "$EC2_SERVICE_PROTOCOL://$SERVICE_HOST:8773/" \
+                "$EC2_SERVICE_PROTOCOL://$SERVICE_HOST:8773/"
         fi
     fi
 

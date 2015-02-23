@@ -66,6 +66,7 @@ Walk through various setups used by stackers
    guides/single-machine
    guides/multinode-lab
    guides/neutron
+   guides/devstack-with-nested-kvm
 
 All-In-One Single VM
 --------------------
@@ -93,6 +94,13 @@ DevStack with Neutron Networking
 Building a DevStack cluster with :doc:`Neutron Networking <guides/neutron>`.
 This guide is meant for building lab environments with a dedicated
 control node and multiple compute nodes.
+
+DevStack with KVM-based Nested Virtualization
+---------------------------------------------
+
+Procedure to setup :doc:`DevStack with KVM-based Nested Virtualization
+<guides/devstack-with-nested-kvm>`. With this setup, Nova instances
+will be more performant than with plain QEMU emulation.
 
 DevStack Documentation
 ======================
@@ -155,11 +163,9 @@ Scripts
 * `lib/ldap <lib/ldap.html>`__
 * `lib/neutron <lib/neutron.html>`__
 * `lib/nova <lib/nova.html>`__
-* `lib/opendaylight <lib/opendaylight.html>`__
 * `lib/oslo <lib/oslo.html>`__
 * `lib/rpc\_backend <lib/rpc_backend.html>`__
 * `lib/sahara <lib/sahara.html>`__
-* `lib/stackforge <lib/stackforge.html>`__
 * `lib/swift <lib/swift.html>`__
 * `lib/tempest <lib/tempest.html>`__
 * `lib/tls <lib/tls.html>`__
@@ -176,7 +182,6 @@ Scripts
 * `extras.d/70-trove.sh <extras.d/70-trove.sh.html>`__
 * `extras.d/70-tuskar.sh <extras.d/70-tuskar.sh.html>`__
 * `extras.d/70-zaqar.sh <extras.d/70-zaqar.sh.html>`__
-* `extras.d/80-opendaylight.sh <extras.d/80-opendaylight.sh.html>`__
 * `extras.d/80-tempest.sh <extras.d/80-tempest.sh.html>`__
 
 Configuration

@@ -94,6 +94,9 @@ source $TOP_DIR/functions
 # Import config functions
 source $TOP_DIR/lib/config
 
+# Import 'public' stack.sh functions
+source $TOP_DIR/lib/stack
+
 # Determine what system we are running on.  This provides ``os_VENDOR``,
 # ``os_RELEASE``, ``os_UPDATE``, ``os_PACKAGE``, ``os_CODENAME``
 # and ``DISTRO``
@@ -500,7 +503,6 @@ source $TOP_DIR/lib/tls
 # Source project function libraries
 source $TOP_DIR/lib/infra
 source $TOP_DIR/lib/oslo
-source $TOP_DIR/lib/stackforge
 source $TOP_DIR/lib/lvm
 source $TOP_DIR/lib/horizon
 source $TOP_DIR/lib/keystone
@@ -585,7 +587,7 @@ function read_password {
 # The available database backends are listed in ``DATABASE_BACKENDS`` after
 # ``lib/database`` is sourced. ``mysql`` is the default.
 
-initialize_database_backends && echo "Using $DATABASE_TYPE database backend" || die $LINENO "No database enabled"
+initialize_database_backends && echo "Using $DATABASE_TYPE database backend" || echo "No database enabled"
 
 
 # Queue Configuration
@@ -602,7 +604,7 @@ fi
 
 # Keystone
 
-if is_service_enabled key; then
+if is_service_enabled keystone; then
     # The ``SERVICE_TOKEN`` is used to bootstrap the Keystone database.  It is
     # just a string and is not a 'real' Keystone token.
     read_password SERVICE_TOKEN "ENTER A SERVICE_TOKEN TO USE FOR THE SERVICE ADMIN TOKEN."
@@ -672,6 +674,15 @@ fi
 source $TOP_DIR/tools/fixup_stuff.sh
 
 
+# Virtual Environment
+# -------------------
+
+# Pre-build some problematic wheels
+if [[ -n ${WHEELHOUSE:-} && ! -d ${WHEELHOUSE:-} ]]; then
+    source $TOP_DIR/tools/build_wheels.sh
+fi
+
+
 # Extras Pre-install
 # ------------------
 
@@ -698,11 +709,6 @@ install_infra
 
 # Install oslo libraries that have graduated
 install_oslo
-
-# Install stackforge libraries for testing
-if is_service_enabled stackforge_libs; then
-    install_stackforge
-fi
 
 # Install clients libraries
 install_keystoneclient
@@ -731,15 +737,15 @@ else
 fi
 
 
-if is_service_enabled key; then
+if is_service_enabled keystone; then
     if [ "$KEYSTONE_AUTH_HOST" == "$SERVICE_HOST" ]; then
-        install_keystone
+        stack_install_service keystone
         configure_keystone
     fi
 fi
 
 if is_service_enabled s-proxy; then
-    install_swift
+    stack_install_service swift
     configure_swift
 
     # swift3 middleware to provide S3 emulation to Swift
@@ -753,23 +759,23 @@ fi
 
 if is_service_enabled g-api n-api; then
     # image catalog service
-    install_glance
+    stack_install_service glance
     configure_glance
 fi
 
 if is_service_enabled cinder; then
-    install_cinder
+    stack_install_service cinder
     configure_cinder
 fi
 
 if is_service_enabled neutron; then
-    install_neutron
+    stack_install_service neutron
     install_neutron_third_party
 fi
 
 if is_service_enabled nova; then
     # compute service
-    install_nova
+    stack_install_service nova
     cleanup_nova
     configure_nova
 fi
@@ -778,19 +784,19 @@ if is_service_enabled horizon; then
     # django openstack_auth
     install_django_openstack_auth
     # dashboard
-    install_horizon
+    stack_install_service horizon
     configure_horizon
 fi
 
 if is_service_enabled ceilometer; then
     install_ceilometerclient
-    install_ceilometer
+    stack_install_service ceilometer
     echo_summary "Configuring Ceilometer"
     configure_ceilometer
 fi
 
 if is_service_enabled heat; then
-    install_heat
+    stack_install_service heat
     install_heat_other
     cleanup_heat
     configure_heat
@@ -924,7 +930,7 @@ start_dstat
 # Keystone
 # --------
 
-if is_service_enabled key; then
+if is_service_enabled keystone; then
     echo_summary "Starting Keystone"
 
     if [ "$KEYSTONE_AUTH_HOST" == "$SERVICE_HOST" ]; then
@@ -1149,7 +1155,7 @@ if is_service_enabled g-reg; then
 fi
 
 # Create an access key and secret key for nova ec2 register image
-if is_service_enabled key && is_service_enabled swift3 && is_service_enabled nova; then
+if is_service_enabled keystone && is_service_enabled swift3 && is_service_enabled nova; then
     eval $(openstack ec2 credentials create --user nova --project $SERVICE_TENANT_NAME -f shell -c access -c secret)
     iniset $NOVA_CONF DEFAULT s3_access_key "$access"
     iniset $NOVA_CONF DEFAULT s3_secret_key "$secret"
@@ -1232,7 +1238,7 @@ fi
 # This step also creates certificates for tenants and users,
 # which is helpful in image bundle steps.
 
-if is_service_enabled nova && is_service_enabled key; then
+if is_service_enabled nova && is_service_enabled keystone; then
     USERRC_PARAMS="-PA --target-dir $TOP_DIR/accrc"
 
     if [ -f $SSL_BUNDLE_FILE ]; then
@@ -1320,7 +1326,7 @@ if is_service_enabled horizon; then
 fi
 
 # If Keystone is present you can point ``nova`` cli to this server
-if is_service_enabled key; then
+if is_service_enabled keystone; then
     echo "Keystone is serving at $KEYSTONE_SERVICE_URI/v2.0/"
     echo "Examples on using novaclient command line is in exercise.sh"
     echo "The default users are: admin and demo"
@@ -1333,57 +1339,6 @@ echo "This is your host ip: $HOST_IP"
 # Warn that a deprecated feature was used
 if [[ -n "$DEPRECATED_TEXT" ]]; then
     echo_summary "WARNING: $DEPRECATED_TEXT"
-fi
-
-if is_service_enabled neutron; then
-    # TODO(dtroyer): Remove Q_AGENT_EXTRA_AGENT_OPTS after stable/juno branch is cut
-    if [[ -n "$Q_AGENT_EXTRA_AGENT_OPTS" ]]; then
-        echo ""
-        echo_summary "WARNING: Q_AGENT_EXTRA_AGENT_OPTS is used"
-        echo "You are using Q_AGENT_EXTRA_AGENT_OPTS to pass configuration into $NEUTRON_CONF."
-        echo "Please convert that configuration in localrc to a $NEUTRON_CONF section in local.conf:"
-        echo "Q_AGENT_EXTRA_AGENT_OPTS will be removed early in the 'K' development cycle"
-        echo "
-[[post-config|/\$Q_PLUGIN_CONF_FILE]]
-[DEFAULT]
-"
-        for I in "${Q_AGENT_EXTRA_AGENT_OPTS[@]}"; do
-            # Replace the first '=' with ' ' for iniset syntax
-            echo ${I}
-        done
-    fi
-
-    # TODO(dtroyer): Remove Q_AGENT_EXTRA_SRV_OPTS after stable/juno branch is cut
-    if [[ -n "$Q_AGENT_EXTRA_SRV_OPTS" ]]; then
-        echo ""
-        echo_summary "WARNING: Q_AGENT_EXTRA_SRV_OPTS is used"
-        echo "You are using Q_AGENT_EXTRA_SRV_OPTS to pass configuration into $NEUTRON_CONF."
-        echo "Please convert that configuration in localrc to a $NEUTRON_CONF section in local.conf:"
-        echo "Q_AGENT_EXTRA_AGENT_OPTS will be removed early in the 'K' development cycle"
-        echo "
-[[post-config|/\$Q_PLUGIN_CONF_FILE]]
-[DEFAULT]
-"
-        for I in "${Q_AGENT_EXTRA_SRV_OPTS[@]}"; do
-            # Replace the first '=' with ' ' for iniset syntax
-            echo ${I}
-        done
-    fi
-fi
-
-if is_service_enabled cinder; then
-    # TODO(dtroyer): Remove CINDER_MULTI_LVM_BACKEND after stable/juno branch is cut
-    if [[ "$CINDER_MULTI_LVM_BACKEND" = "True" ]]; then
-        echo ""
-        echo_summary "WARNING: CINDER_MULTI_LVM_BACKEND is used"
-        echo "You are using CINDER_MULTI_LVM_BACKEND to configure Cinder's multiple LVM backends"
-        echo "Please convert that configuration in local.conf to use CINDER_ENABLED_BACKENDS."
-        echo "CINDER_MULTI_LVM_BACKEND will be removed early in the 'K' development cycle"
-        echo "
-[[local|localrc]]
-CINDER_ENABLED_BACKENDS=lvm:lvmdriver-1,lvm:lvmdriver-2
-"
-    fi
 fi
 
 # Indicate how long this took to run (bash maintained variable ``SECONDS``)

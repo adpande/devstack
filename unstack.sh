@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 # **unstack.sh**
 
@@ -54,7 +54,6 @@ source $TOP_DIR/lib/tls
 # Source project function libraries
 source $TOP_DIR/lib/infra
 source $TOP_DIR/lib/oslo
-source $TOP_DIR/lib/stackforge
 source $TOP_DIR/lib/lvm
 source $TOP_DIR/lib/horizon
 source $TOP_DIR/lib/keystone
@@ -113,7 +112,7 @@ if is_service_enabled glance; then
     stop_glance
 fi
 
-if is_service_enabled key; then
+if is_service_enabled keystone; then
     stop_keystone
 fi
 
@@ -133,13 +132,19 @@ if is_service_enabled tls-proxy; then
     stop_tls_proxy
     cleanup_CA
 fi
+if [ "$USE_SSL" == "True" ]; then
+    cleanup_CA
+fi
 
 SCSI_PERSIST_DIR=$CINDER_STATE_PATH/volumes/*
 
+# BUG: tgt likes to exit 1 on service stop if everything isn't
+# perfect, we should clean up cinder stop paths.
+
 # Get the iSCSI volumes
 if is_service_enabled cinder; then
-    stop_cinder
-    cleanup_cinder
+    stop_cinder || /bin/true
+    cleanup_cinder || /bin/true
 fi
 
 if [[ -n "$UNSTACK_ALL" ]]; then
@@ -179,4 +184,5 @@ if [[ -n "$SCREEN" ]]; then
     fi
 fi
 
-clean_lvm_volume_group $DEFAULT_VOLUME_GROUP_NAME
+# BUG: maybe it doesn't exist? We should isolate this further down.
+clean_lvm_volume_group $DEFAULT_VOLUME_GROUP_NAME || /bin/true

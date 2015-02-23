@@ -111,8 +111,17 @@ KEYSTONE_SERVICE_URI=${KEYSTONE_SERVICE_PROTOCOL}://${KEYSTONE_SERVICE_HOST}:${K
 KEYSTONE_AUTH_URI_V3=$KEYSTONE_AUTH_URI/v3
 KEYSTONE_SERVICE_URI_V3=$KEYSTONE_SERVICE_URI/v3
 
+
 # Functions
 # ---------
+
+# Test if Keystone is enabled
+# is_keystone_enabled
+function is_keystone_enabled {
+    [[ ,${ENABLED_SERVICES}, =~ ,"key", ]] && return 0
+    return 1
+}
+
 # cleanup_keystone() - Remove residual data files, anything left over from previous
 # runs that a clean run would need to clean up
 function cleanup_keystone {
@@ -309,8 +318,9 @@ function configure_keystone {
         setup_colorized_logging $KEYSTONE_CONF DEFAULT
     fi
 
+    iniset $KEYSTONE_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
+
     if [ "$KEYSTONE_USE_MOD_WSGI" == "True" ]; then
-        iniset $KEYSTONE_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
         # Eliminate the %(asctime)s.%(msecs)03d from the log format strings
         iniset $KEYSTONE_CONF DEFAULT logging_context_format_string "%(process)d %(levelname)s %(name)s [%(request_id)s %(user_identity)s] %(instance)s%(message)s"
         iniset $KEYSTONE_CONF DEFAULT logging_default_format_string "%(process)d %(levelname)s %(name)s [-] %(instance)s%(message)s"
@@ -364,7 +374,7 @@ function create_keystone_accounts {
     local admin_tenant=$(get_or_create_project "admin")
     local admin_user=$(get_or_create_user "admin" "$ADMIN_PASSWORD")
     local admin_role=$(get_or_create_role "admin")
-    get_or_add_user_role $admin_role $admin_user $admin_tenant
+    get_or_add_user_project_role $admin_role $admin_user $admin_tenant
 
     # Create service project/role
     get_or_create_project "$SERVICE_TENANT_NAME"
@@ -393,10 +403,10 @@ function create_keystone_accounts {
     local demo_user=$(get_or_create_user "demo" \
         "$ADMIN_PASSWORD" "demo@example.com")
 
-    get_or_add_user_role $member_role $demo_user $demo_tenant
-    get_or_add_user_role $admin_role $admin_user $demo_tenant
-    get_or_add_user_role $another_role $demo_user $demo_tenant
-    get_or_add_user_role $member_role $demo_user $invis_tenant
+    get_or_add_user_project_role $member_role $demo_user $demo_tenant
+    get_or_add_user_project_role $admin_role $admin_user $demo_tenant
+    get_or_add_user_project_role $another_role $demo_user $demo_tenant
+    get_or_add_user_project_role $member_role $demo_user $invis_tenant
 
     get_or_create_group "developers" "default" "openstack developers"
     get_or_create_group "testers" "default"
@@ -412,6 +422,20 @@ function create_keystone_accounts {
             "$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_AUTH_PORT/v$IDENTITY_API_VERSION" \
             "$KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/v$IDENTITY_API_VERSION"
     fi
+}
+
+# Create a user that is capable of verifying keystone tokens for use with auth_token middleware.
+#
+# create_service_user <name> [role]
+#
+# The role defaults to the service role. It is allowed to be provided as optional as historically
+# a lot of projects have configured themselves with the admin or other role here if they are
+# using this user for other purposes beyond simply auth_token middleware.
+function create_service_user {
+    local role=${2:-service}
+
+    local user=$(get_or_create_user "$1" "$SERVICE_PASSWORD")
+    get_or_add_user_project_role "$role" "$user" "$SERVICE_TENANT_NAME"
 }
 
 # Configure the service to use the auth token middleware.
@@ -532,12 +556,8 @@ function start_keystone {
         tail_log key /var/log/$APACHE_NAME/keystone.log
         tail_log key-access /var/log/$APACHE_NAME/keystone_access.log
     else
-        local EXTRA_PARAMS=""
-        if [ "$ENABLE_DEBUG_LOG_LEVEL" == "True" ]; then
-            EXTRA_PARAMS="--debug"
-        fi
         # Start Keystone in a screen window
-        run_process key "$KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $EXTRA_PARAMS"
+        run_process key "$KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF"
     fi
 
     echo "Waiting for keystone to start..."
@@ -565,9 +585,6 @@ function stop_keystone {
     stop_process key
 }
 
-function is_keystone_enabled {
-    return is_service_enabled key
-}
 
 # Restore xtrace
 $XTRACE

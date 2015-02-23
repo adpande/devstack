@@ -15,6 +15,13 @@ INC_PY_TRACE=$(set +o | grep xtrace)
 set +o xtrace
 
 
+# Global Config Variables
+
+# PROJECT_VENV contains the name of the virtual enviromnet for each
+# project.  A null value installs to the system Python directories.
+declare -A PROJECT_VENV
+
+
 # Python Functions
 # ================
 
@@ -31,6 +38,13 @@ function get_pip_command {
 # Get the path to the direcotry where python executables are installed.
 # get_python_exec_prefix
 function get_python_exec_prefix {
+    local xtrace=$(set +o | grep xtrace)
+    set +o xtrace
+    if [[ -z "$os_PACKAGE" ]]; then
+        GetOSVersion
+    fi
+    $xtrace
+
     if is_fedora || is_suse; then
         echo "/usr/bin"
     else
@@ -39,8 +53,8 @@ function get_python_exec_prefix {
 }
 
 # Wrapper for ``pip install`` to set cache and proxy environment variables
-# Uses globals ``INSTALL_TESTONLY_PACKAGES``, ``OFFLINE``, ``TRACK_DEPENDS``,
-# ``*_proxy``
+# Uses globals ``INSTALL_TESTONLY_PACKAGES``, ``OFFLINE``, ``PIP_VIRTUAL_ENV``,
+# ``TRACK_DEPENDS``, ``*_proxy``
 # pip_install package [package ...]
 function pip_install {
     local xtrace=$(set +o | grep xtrace)
@@ -62,8 +76,13 @@ function pip_install {
         local cmd_pip=$DEST/.venv/bin/pip
         local sudo_pip="env"
     else
-        local cmd_pip=$(get_pip_command)
-        local sudo_pip="sudo -H"
+        if [[ -n ${PIP_VIRTUAL_ENV:=} && -d ${PIP_VIRTUAL_ENV} ]]; then
+            local cmd_pip=$PIP_VIRTUAL_ENV/bin/pip
+            local sudo_pip="env"
+        else
+            local cmd_pip=$(get_pip_command)
+            local sudo_pip="sudo -H"
+        fi
     fi
 
     local pip_version=$(python -c "import pip; \
@@ -93,6 +112,17 @@ function pip_install {
                 -r $test_req
         fi
     fi
+}
+
+# get version of a package from global requirements file
+# get_from_global_requirements <package>
+function get_from_global_requirements {
+    local package=$1
+    local required_pkg=$(grep -h ${package} $REQUIREMENTS_DIR/global-requirements.txt | cut -d\# -f1)
+    if [[ $required_pkg == ""  ]]; then
+        die $LINENO "Can't find package $package in requirements"
+    fi
+    echo $required_pkg
 }
 
 # should we use this library from their git repo, or should we let it

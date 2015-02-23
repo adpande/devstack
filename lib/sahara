@@ -61,11 +61,7 @@ TEMPEST_SERVICES+=,sahara
 # service     sahara    admin
 function create_sahara_accounts {
 
-    local service_tenant=$(openstack project list | awk "/ $SERVICE_TENANT_NAME / { print \$2 }")
-    local admin_role=$(openstack role list | awk "/ admin / { print \$2 }")
-
-    local sahara_user=$(get_or_create_user "sahara" "$SERVICE_PASSWORD")
-    get_or_add_user_role $admin_role $sahara_user $service_tenant
+    create_service_user "sahara"
 
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
 
@@ -128,6 +124,10 @@ function configure_sahara {
     if is_service_enabled neutron; then
         iniset $SAHARA_CONF_FILE DEFAULT use_neutron true
         iniset $SAHARA_CONF_FILE DEFAULT use_floating_ips true
+
+        if is_ssl_enabled_service "neutron" || is_service_enabled tls-proxy; then
+            iniset $SAHARA_CONF_FILE neutron ca_file $SSL_BUNDLE_FILE
+        fi
     else
         iniset $SAHARA_CONF_FILE DEFAULT use_neutron false
         iniset $SAHARA_CONF_FILE DEFAULT use_floating_ips false
@@ -135,8 +135,28 @@ function configure_sahara {
 
     if is_service_enabled heat; then
         iniset $SAHARA_CONF_FILE DEFAULT infrastructure_engine heat
+
+        if is_ssl_enabled_service "heat" || is_service_enabled tls-proxy; then
+            iniset $SAHARA_CONF_FILE heat ca_file $SSL_BUNDLE_FILE
+        fi
     else
         iniset $SAHARA_CONF_FILE DEFAULT infrastructure_engine direct
+    fi
+
+    if is_ssl_enabled_service "cinder" || is_service_enabled tls-proxy; then
+        iniset $SAHARA_CONF_FILE cinder ca_file $SSL_BUNDLE_FILE
+    fi
+
+    if is_ssl_enabled_service "nova" || is_service_enabled tls-proxy; then
+        iniset $SAHARA_CONF_FILE nova ca_file $SSL_BUNDLE_FILE
+    fi
+
+    if is_ssl_enabled_service "swift" || is_service_enabled tls-proxy; then
+        iniset $SAHARA_CONF_FILE swift ca_file $SSL_BUNDLE_FILE
+    fi
+
+    if is_ssl_enabled_service "key" || is_service_enabled tls-proxy; then
+        iniset $SAHARA_CONF_FILE keystone ca_file $SSL_BUNDLE_FILE
     fi
 
     iniset $SAHARA_CONF_FILE DEFAULT use_syslog $SYSLOG
@@ -183,7 +203,7 @@ function start_sahara {
 # stop_sahara() - Stop running processes
 function stop_sahara {
     # Kill the Sahara screen windows
-    screen -S $SCREEN_NAME -p sahara -X kill
+    stop_process sahara
 }
 
 

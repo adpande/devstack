@@ -55,7 +55,7 @@ function isset {
 # this allows us to pass ENABLED_SERVICES
 if ! isset ENABLED_SERVICES ; then
     # core compute (glance / keystone / nova (+ nova-network))
-    ENABLED_SERVICES=g-api,g-reg,key,n-api,n-crt,n-obj,n-cpu,n-net,n-cond,n-sch,n-xvnc,n-cauth
+    ENABLED_SERVICES=g-api,g-reg,key,n-api,n-crt,n-obj,n-cpu,n-net,n-cond,n-sch,n-novnc,n-xvnc,n-cauth
     # cinder
     ENABLED_SERVICES+=,c-sch,c-api,c-vol
     # heat
@@ -112,6 +112,11 @@ elif [[ -f $RC_DIR/.localrc.auto ]]; then
     source $RC_DIR/.localrc.auto
 fi
 
+# Configure wheel cache location
+export WHEELHOUSE=${WHEELHOUSE:-$DEST/.wheelhouse}
+export PIP_WHEEL_DIR=${PIP_WHEEL_DIR:-$WHEELHOUSE}
+export PIP_FIND_LINKS=${PIP_FIND_LINKS:-file://$WHEELHOUSE}
+
 # This can be used to turn database query logging on and off
 # (currently only implemented for MySQL backend)
 DATABASE_QUERY_LOGGING=$(trueorfalse True DATABASE_QUERY_LOGGING)
@@ -164,7 +169,7 @@ GIT_BASE=${GIT_BASE:-git://git.openstack.org}
 #
 ##############
 
-# metering service
+# telemetry service
 CEILOMETER_REPO=${CEILOMETER_REPO:-${GIT_BASE}/openstack/ceilometer.git}
 CEILOMETER_BRANCH=${CEILOMETER_BRANCH:-master}
 
@@ -407,6 +412,10 @@ GITBRANCH["keystonemiddleware"]=${KEYSTONEMIDDLEWARE_BRANCH:-master}
 SWIFT3_REPO=${SWIFT3_REPO:-${GIT_BASE}/stackforge/swift3.git}
 SWIFT3_BRANCH=${SWIFT3_BRANCH:-master}
 
+# ceilometer middleware
+GITREPO["ceilometermiddleware"]=${CEILOMETERMIDDLEWARE_REPO:-${GIT_BASE}/openstack/ceilometermiddleware.git}
+GITBRANCH["ceilometermiddleware"]=${CEILOMETERMIDDLEWARE_BRANCH:-master}
+
 
 ##################
 #
@@ -436,26 +445,6 @@ TIE_BRANCH=${TIE_BRANCH:-master}
 
 #################
 #
-#  Additional Libraries
-#
-#################
-
-# stackforge libraries that are used by OpenStack core services
-# wsme
-WSME_REPO=${WSME_REPO:-${GIT_BASE}/stackforge/wsme.git}
-WSME_BRANCH=${WSME_BRANCH:-master}
-
-# pecan
-PECAN_REPO=${PECAN_REPO:-${GIT_BASE}/stackforge/pecan.git}
-PECAN_BRANCH=${PECAN_BRANCH:-master}
-
-# sqlalchemy-migrate
-SQLALCHEMY_MIGRATE_REPO=${SQLALCHEMY_MIGRATE_REPO:-${GIT_BASE}/stackforge/sqlalchemy-migrate.git}
-SQLALCHEMY_MIGRATE_BRANCH=${SQLALCHEMY_MIGRATE_BRANCH:-master}
-
-
-#################
-#
 #  3rd Party Components (non pip installable)
 #
 #  NOTE(sdague): these should be converted to release version installs or removed
@@ -469,10 +458,6 @@ IRONIC_PYTHON_AGENT_BRANCH=${IRONIC_PYTHON_AGENT_BRANCH:-master}
 # a websockets/html5 or flash powered VNC console for vm instances
 NOVNC_REPO=${NOVNC_REPO:-https://github.com/kanaka/noVNC.git}
 NOVNC_BRANCH=${NOVNC_BRANCH:-master}
-
-# ryu service
-RYU_REPO=${RYU_REPO:-https://github.com/osrg/ryu.git}
-RYU_BRANCH=${RYU_BRANCH:-master}
 
 # a websockets/html5 or flash powered SPICE console for vm instances
 SPICE_REPO=${SPICE_REPO:-http://anongit.freedesktop.org/git/spice/spice-html5.git}
